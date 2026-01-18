@@ -3,3 +3,6 @@ mods
 manifest.json
 tmpclaude-*
 .env
+jq.exe
+mods_list.md
+.mods_cache.json
