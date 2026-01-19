@@ -279,6 +279,12 @@ slugify() {
     echo "$text" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'
 }
 
+# Normalise un nom pour le matching (enlève tout sauf lettres et chiffres, lowercase)
+normalize_for_match() {
+    local text="$1"
+    echo "$text" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g'
+}
+
 calculate_similarity() {
     local str1="$1"
     local str2="$2"
@@ -369,17 +375,19 @@ search_mods_via_api() {
 
     log_api "🔍 Recherche des URLs CurseForge via l'API..."
 
-    # Créer un fichier avec les slugs des mods à rechercher
-    local slugs_file=$(mktemp)
+    # Créer les fichiers de travail
     local mods_map_file=$(mktemp)
+    local authors_file=$(mktemp)
     local total_to_find=0
 
+    # Phase 1: Collecter les mods à rechercher et leurs auteurs
     for json_file in "$mods_info_dir"/*.json; do
         [ -f "$json_file" ] || continue
 
         local mod_data=$(jq -c '{name: .name, website: .website, authors: .authors}' "$json_file" 2>/dev/null)
         local mod_name=$(echo "$mod_data" | jq -r '.name // "N/A"')
         local website=$(echo "$mod_data" | jq -r '.website // ""')
+        local author=$(echo "$mod_data" | jq -r '.authors // "Unknown"')
 
         # Si pas d'URL CurseForge dans le manifest
         if [[ "$website" != *"curseforge.com/hytale/mods/"* ]] && [[ "$website" != *"legacy.curseforge.com/hytale/mods/"* ]]; then
@@ -396,28 +404,117 @@ search_mods_via_api() {
                 fi
             fi
 
-            # Générer le slug du mod local
-            local slug=$(echo "$mod_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
-            echo "$slug" >> "$slugs_file"
-            echo "$mod_name|$json_file|$slug" >> "$mods_map_file"
+            # Stocker le mod avec son auteur
+            local slug=$(slugify "$mod_name")
+            echo "${mod_name}@@@${json_file}@@@${slug}@@@${author}" >> "$mods_map_file"
+            echo "$author" >> "$authors_file"
             ((total_to_find++))
         fi
     done
 
     if [ $total_to_find -eq 0 ]; then
         log_success "Tous les mods ont déjà une URL CurseForge !"
-        rm -f "$slugs_file" "$mods_map_file"
+        rm -f "$mods_map_file" "$authors_file"
         return 0
     fi
 
     log_api "Mods à rechercher : $total_to_find"
+
+    # Obtenir la liste des auteurs uniques
+    local unique_authors=$(sort -u "$authors_file" | grep -v "Unknown" | grep -v "^$")
+    local num_authors=$(echo "$unique_authors" | grep -c "." || echo "0")
+    log_api "Auteurs uniques : $num_authors"
     echo ""
 
-    # Recherche par meta-batches
-    local current_offset=0
-    local meta_batch_number=1
     local total_found=0
     local remaining=$total_to_find
+
+    # Phase 2: Recherche par auteur (plus précise)
+    log_api "📋 Stratégie 1: Recherche par auteur..."
+    echo ""
+
+    while IFS= read -r author; do
+        [ -z "$author" ] && continue
+        [ $remaining -eq 0 ] && break
+
+        # Chercher les mods de cet auteur sur CurseForge
+        log_info "  Recherche des mods de '$author'..."
+
+        local cf_mods_file=$(mktemp)
+        local api_response=$(api_request "/mods/search?gameId=$HYTALE_GAME_ID&searchFilter=$(echo "$author" | sed 's/ /%20/g')&pageSize=50")
+        echo "$api_response" | jq -r '.data[]? | select(.links.websiteUrl | contains("/mods/")) | "\(.name)@@@\(.slug)@@@\(.id)@@@\(.links.websiteUrl)@@@\(.authors[0].name // "")"' 2>/dev/null > "$cf_mods_file"
+
+        # Matcher les mods locaux de cet auteur (utiliser awk car IFS ne gère pas les séparateurs multi-caractères)
+        while IFS= read -r map_line; do
+            [ -z "$map_line" ] && continue
+
+            local mod_name=$(echo "$map_line" | awk -F'@@@' '{print $1}')
+            local json_file=$(echo "$map_line" | awk -F'@@@' '{print $2}')
+            local local_slug=$(echo "$map_line" | awk -F'@@@' '{print $3}')
+            local mod_author=$(echo "$map_line" | awk -F'@@@' '{print $4}')
+
+            [ -z "$mod_name" ] && continue
+            [[ "$mod_author" != *"$author"* ]] && continue
+
+            local normalized_local=$(normalize_for_match "$mod_name")
+
+            # Chercher dans les résultats de cet auteur
+            while IFS= read -r line; do
+                local cf_name=$(echo "$line" | awk -F'@@@' '{print $1}')
+                local cf_slug=$(echo "$line" | awk -F'@@@' '{print $2}')
+                local cf_id=$(echo "$line" | awk -F'@@@' '{print $3}')
+                local cf_url=$(echo "$line" | awk -F'@@@' '{print $4}')
+                local cf_author=$(echo "$line" | awk -F'@@@' '{print $5}')
+
+                # Vérifier que l'auteur correspond
+                [[ "$cf_author" != *"$author"* ]] && continue
+
+                local normalized_cf=$(normalize_for_match "$cf_name")
+
+                # Match exact ou par sous-chaîne (avec taille minimale)
+                if [[ "$normalized_cf" == "$normalized_local" ]] || \
+                   [[ "$cf_slug" == "$local_slug" ]] || \
+                   { [ ${#normalized_cf} -ge 5 ] && [[ "$normalized_cf" == *"$normalized_local"* ]]; } || \
+                   { [ ${#normalized_local} -ge 5 ] && [[ "$normalized_local" == *"$normalized_cf"* ]]; }; then
+
+                    log_success "  ✓ $mod_name → $cf_url"
+
+                    # Sauvegarder
+                    local temp_json=$(mktemp)
+                    jq --arg url "$cf_url" '. + {curseforge_url: $url, found_via: "api_author"}' "$json_file" > "$temp_json"
+                    mv "$temp_json" "$json_file"
+
+                    save_to_cache "$mod_name" "{\"curseforge_url\": \"$cf_url\", \"curseforge_id\": $cf_id, \"slug\": \"$cf_slug\", \"found_via\": \"author_search\"}"
+
+                    # Retirer de la liste à chercher
+                    sed -i "/^${mod_name}@@@/d" "$mods_map_file" 2>/dev/null
+
+                    ((total_found++))
+                    ((remaining--))
+                    break
+                fi
+            done < "$cf_mods_file"
+        done < "$mods_map_file"
+
+        rm -f "$cf_mods_file"
+    done <<< "$unique_authors"
+
+    echo ""
+    log_info "Après recherche par auteur : $total_found trouvé(s), $remaining restant(s)"
+    echo ""
+
+    # Phase 3: Recherche globale par meta-batches (pour les mods restants)
+    if [ $remaining -eq 0 ]; then
+        log_success "✅ Tous les mods trouvés via la recherche par auteur !"
+        rm -f "$mods_map_file" "$authors_file"
+        return 0
+    fi
+
+    log_api "📋 Stratégie 2: Recherche globale par batches..."
+    echo ""
+
+    local current_offset=0
+    local meta_batch_number=1
 
     while [ $remaining -gt 0 ] && [ $current_offset -lt $MAX_API_LIMIT ]; do
         local meta_batch_end=$((current_offset + META_BATCH_SIZE))
@@ -441,9 +538,9 @@ search_mods_via_api() {
             local total_count=$(jq -r '.pagination.totalCount // 0' "$api_response_file" 2>/dev/null)
             local result_count=$(jq -r '.pagination.resultCount // 0' "$api_response_file" 2>/dev/null)
 
-            # Extraire les données en une seule passe jq
+            # Extraire les données en une seule passe jq (séparateur @@@ et filtrer uniquement les mods)
             local cf_data_file=$(mktemp)
-            jq -r '.data[]? | "\(.name)|\(.slug)|\(.id)|\(.links.websiteUrl)"' "$api_response_file" 2>/dev/null > "$cf_data_file"
+            jq -r '.data[]? | select(.links.websiteUrl | contains("/mods/")) | "\(.name)@@@\(.slug)@@@\(.id)@@@\(.links.websiteUrl)"' "$api_response_file" 2>/dev/null > "$cf_data_file"
             rm -f "$api_response_file"
 
             if [ ! -s "$cf_data_file" ] || [ "$result_count" -eq 0 ]; then
@@ -453,19 +550,54 @@ search_mods_via_api() {
                 break 2
             fi
 
-            # Matcher rapidement avec grep et traitement par ligne
-            while IFS='|' read -r mod_name json_file local_slug; do
+            # Matcher avec plusieurs stratégies (utiliser awk car IFS ne gère pas les séparateurs multi-caractères)
+            while IFS= read -r map_line; do
+                [ -z "$map_line" ] && continue
+
+                local mod_name=$(echo "$map_line" | awk -F'@@@' '{print $1}')
+                local json_file=$(echo "$map_line" | awk -F'@@@' '{print $2}')
+                local local_slug=$(echo "$map_line" | awk -F'@@@' '{print $3}')
+
                 [ -z "$local_slug" ] && continue
 
-                # Chercher une correspondance dans les résultats API (par slug ou nom)
-                local match=$(grep -i "^$mod_name|" "$cf_data_file" 2>/dev/null | head -1)
-                [ -z "$match" ] && match=$(grep -i "|$local_slug|" "$cf_data_file" 2>/dev/null | head -1)
+                local match=""
+                local normalized_local=$(normalize_for_match "$mod_name")
+
+                # Stratégie 1: Match exact du nom (insensible à la casse)
+                match=$(grep -i "^${mod_name}@@@" "$cf_data_file" 2>/dev/null | head -1)
+
+                # Stratégie 2: Match exact du slug
+                [ -z "$match" ] && match=$(grep -i "@@@${local_slug}@@@" "$cf_data_file" 2>/dev/null | head -1)
+
+                # Stratégie 3: Le nom local est contenu dans le nom CF ou vice versa (avec longueur minimale)
+                if [ -z "$match" ]; then
+                    while IFS= read -r line; do
+                        local cf_name=$(echo "$line" | awk -F'@@@' '{print $1}')
+                        local cf_slug=$(echo "$line" | awk -F'@@@' '{print $2}')
+
+                        local normalized_cf=$(normalize_for_match "$cf_name")
+
+                        # Vérifier avec longueur minimale pour éviter les faux positifs
+                        if [ ${#normalized_cf} -ge 5 ] && [ ${#normalized_local} -ge 5 ]; then
+                            if [[ "$normalized_cf" == *"$normalized_local"* ]] || [[ "$normalized_local" == *"$normalized_cf"* ]]; then
+                                match="$line"
+                                break
+                            fi
+                            # Vérifier aussi le slug normalisé
+                            local normalized_cf_slug=$(normalize_for_match "$cf_slug")
+                            if [[ "$normalized_cf_slug" == *"$normalized_local"* ]] || [[ "$normalized_local" == *"$normalized_cf_slug"* ]]; then
+                                match="$line"
+                                break
+                            fi
+                        fi
+                    done < "$cf_data_file"
+                fi
 
                 if [ -n "$match" ]; then
-                    local cf_name=$(echo "$match" | cut -d'|' -f1)
-                    local cf_slug=$(echo "$match" | cut -d'|' -f2)
-                    local cf_id=$(echo "$match" | cut -d'|' -f3)
-                    local cf_url=$(echo "$match" | cut -d'|' -f4)
+                    local cf_name=$(echo "$match" | awk -F'@@@' '{print $1}')
+                    local cf_slug=$(echo "$match" | awk -F'@@@' '{print $2}')
+                    local cf_id=$(echo "$match" | awk -F'@@@' '{print $3}')
+                    local cf_url=$(echo "$match" | awk -F'@@@' '{print $4}')
 
                     echo "" >&2
                     log_success "  ✓ $mod_name → $cf_url"
@@ -478,8 +610,8 @@ search_mods_via_api() {
                     # Sauvegarder dans le cache
                     save_to_cache "$mod_name" "{\"curseforge_url\": \"$cf_url\", \"curseforge_id\": $cf_id, \"slug\": \"$cf_slug\", \"found_at_offset\": $current_offset}"
 
-                    # Marquer comme trouvé dans le fichier map
-                    sed -i "/^${mod_name}|/d" "$mods_map_file" 2>/dev/null
+                    # Marquer comme trouvé dans le fichier map (utiliser @@@ comme séparateur)
+                    sed -i "/^${mod_name}@@@/d" "$mods_map_file" 2>/dev/null
 
                     ((found_in_this_meta_batch++))
                     ((total_found++))
@@ -522,15 +654,16 @@ search_mods_via_api() {
     log_success "Recherche terminée : $total_found mod(s) trouvé(s) via l'API"
 
     if [ $remaining -gt 0 ]; then
-        local not_found=$(cut -d'|' -f1 "$mods_map_file" | tr '\n' ' ')
+        local not_found=$(awk -F'@@@' '{print $1}' "$mods_map_file" | tr '\n' ' ')
         log_warning "Mods non trouvés ($remaining) : $not_found"
 
-        while IFS='|' read -r mod_name json_file local_slug; do
+        while IFS= read -r map_line; do
+            local mod_name=$(echo "$map_line" | awk -F'@@@' '{print $1}')
             save_to_cache "$mod_name" "{\"not_found\": true, \"searched_up_to_offset\": $current_offset}"
         done < "$mods_map_file"
     fi
 
-    rm -f "$slugs_file" "$mods_map_file"
+    rm -f "$mods_map_file" "$authors_file"
 }
 
 #############################################
