@@ -1,4 +1,4 @@
-﻿.claude
+.claude
 mods
 manifest.json
 tmpclaude-*
@@ -7,6 +7,23 @@ jq.exe
 mods_list.md
 .mods_cache.json
 .api_key
+
+# Old console app
 HytaleModLister/.vs
 HytaleModLister/bin
 HytaleModLister/obj
+HytaleModLister/Properties/PublishProfiles
+HytaleModLister/HytaleModLister.csproj.user
+
+# Backend
+backend/HytaleModLister.Api/bin
+backend/HytaleModLister.Api/obj
+backend/HytaleModLister.Api/.vs
+backend/HytaleModLister.Api/appsettings.Development.json
+
+# Frontend
+frontend/node_modules
+frontend/.svelte-kit
+frontend/build
+backend/.vs/HytaleModLister.Api/FileContentIndex
+backend/.vs
