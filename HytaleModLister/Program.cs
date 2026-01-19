@@ -1,10 +1,9 @@
+using Fastenshtein;
 using System.IO.Compression;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Fastenshtein;
 
 namespace HytaleModLister;
 
@@ -26,7 +25,7 @@ class Program
     static async Task<int> Main(string[] args)
     {
         ScriptDir = AppContext.BaseDirectory;
-        var modsPath = Path.Combine(ScriptDir, "mods");
+        string modsPath = Path.Combine(ScriptDir, "mods");
 
 #if DEBUG
         // En debug, remonter au dossier parent si on est dans bin/Debug/...
@@ -62,7 +61,7 @@ class Program
 
     static bool ParseArgs(string[] args)
     {
-        foreach (var arg in args)
+        foreach (string arg in args)
         {
             switch (arg)
             {
@@ -89,7 +88,7 @@ class Program
 
     static void LoadApiKey()
     {
-        var keyFile = Path.Combine(ScriptDir, ".api_key");
+        string keyFile = Path.Combine(ScriptDir, ".api_key");
         if (File.Exists(keyFile))
         {
             ApiKey = File.ReadAllText(keyFile).Trim();
@@ -105,7 +104,7 @@ class Program
 
     static void LoadCache()
     {
-        var cacheFile = Path.Combine(ScriptDir, ".mods_cache.json");
+        string cacheFile = Path.Combine(ScriptDir, ".mods_cache.json");
         if (File.Exists(cacheFile) && !ForceRefresh)
         {
             try
@@ -120,7 +119,7 @@ class Program
     {
         if (ApiKey == null) return;
         Cache.LastUpdated = DateTime.UtcNow;
-        var cacheFile = Path.Combine(ScriptDir, ".mods_cache.json");
+        string cacheFile = Path.Combine(ScriptDir, ".mods_cache.json");
         File.WriteAllText(cacheFile, JsonSerializer.Serialize(Cache, new JsonSerializerOptions { WriteIndented = true }));
     }
 
@@ -131,7 +130,7 @@ class Program
             .Where(f => f.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) ||
                         f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
 
-        foreach (var file in files)
+        foreach (string? file in files)
         {
             try
             {
@@ -202,7 +201,7 @@ class Program
         var authors = toFind.SelectMany(m => m.Authors).Distinct().Where(a => a != "Unknown").ToList();
         Log("API", $"Strategie 1: Recherche par auteur ({authors.Count} auteurs)", ConsoleColor.Cyan);
 
-        foreach (var author in authors)
+        foreach (string? author in authors)
         {
             if (toFind.Count == 0) break;
 
@@ -265,7 +264,7 @@ class Program
     {
         try
         {
-            var url = $"{ApiBaseUrl}/mods/search?gameId={HytaleGameId}&searchFilter={Uri.EscapeDataString(searchTerm)}&pageSize={BatchSize}";
+            string url = $"{ApiBaseUrl}/mods/search?gameId={HytaleGameId}&searchFilter={Uri.EscapeDataString(searchTerm)}&pageSize={BatchSize}";
             var response = await Http.GetFromJsonAsync<CfResponse>(url, JsonOpts);
             return ParseCfMods(response);
         }
@@ -276,7 +275,7 @@ class Program
     {
         try
         {
-            var url = $"{ApiBaseUrl}/mods/search?gameId={HytaleGameId}&pageSize={BatchSize}&index={offset}";
+            string url = $"{ApiBaseUrl}/mods/search?gameId={HytaleGameId}&pageSize={BatchSize}&index={offset}";
             var response = await Http.GetFromJsonAsync<CfResponse>(url, JsonOpts);
             return ParseCfMods(response);
         }
@@ -299,12 +298,12 @@ class Program
 
     static MatchResult? FindBestMatch(string localName, IEnumerable<CfMod> cfMods)
     {
-        var normalizedLocal = Normalize(localName);
-        var localSlug = Slugify(localName);
+        string normalizedLocal = Normalize(localName);
+        string localSlug = Slugify(localName);
 
         foreach (var cf in cfMods)
         {
-            var normalizedCf = Normalize(cf.Name);
+            string normalizedCf = Normalize(cf.Name);
 
             // Match exact normalise
             if (normalizedCf == normalizedLocal)
@@ -324,14 +323,14 @@ class Program
 
         // Fuzzy matching Levenshtein (seulement si assez de candidats)
         MatchResult? bestFuzzy = null;
-        int bestSimilarity = 59; // Seuil 60%
+        int bestSimilarity = 79; // Seuil 80%
 
         foreach (var cf in cfMods)
         {
-            var normalizedCf = Normalize(cf.Name);
+            string normalizedCf = Normalize(cf.Name);
             if (normalizedCf.Length < 5 || normalizedLocal.Length < 5) continue;
 
-            var similarity = LevenshteinSimilarity(normalizedLocal, normalizedCf);
+            int similarity = LevenshteinSimilarity(normalizedLocal, normalizedCf);
             if (similarity > bestSimilarity)
             {
                 bestSimilarity = similarity;
@@ -386,7 +385,7 @@ class Program
 
             if (!string.IsNullOrEmpty(mod.CurseForgeUrl))
             {
-                var icon = mod.FoundVia == "manifest" ? "[lien]" : "[API]";
+                string icon = mod.FoundVia == "manifest" ? "[lien]" : "[API]";
                 sb.AppendLine($"**URL :** [{mod.CurseForgeUrl}]({mod.CurseForgeUrl}) {icon}");
             }
             else if (!string.IsNullOrEmpty(mod.Website))
@@ -418,7 +417,7 @@ class Program
         }
         else
         {
-            var outputFile = Path.Combine(ScriptDir, "mods_list.md");
+            string outputFile = Path.Combine(ScriptDir, "mods_list.md");
             File.WriteAllText(outputFile, sb.ToString());
             Log("OK", $"Fichier genere: {outputFile}");
         }

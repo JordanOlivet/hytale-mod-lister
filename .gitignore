@@ -10,3 +10,5 @@ mods_list.md
 HytaleModLister/.vs
 HytaleModLister/bin
 HytaleModLister/obj
+HytaleModLister/Properties/PublishProfiles
+HytaleModLister/HytaleModLister.csproj.user
