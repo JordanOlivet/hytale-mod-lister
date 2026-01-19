@@ -166,10 +166,23 @@ install_dependencies() {
 }
 
 load_env() {
+    local api_key_file="$SCRIPT_DIR/.api_key"
+
+    # Essayer de charger depuis .api_key (fichier texte brut)
+    if [ -f "$api_key_file" ]; then
+        CURSEFORGE_API_KEY=$(cat "$api_key_file")
+        if [ -n "$CURSEFORGE_API_KEY" ]; then
+            log_success "Clé API chargée depuis .api_key"
+            USE_API=true
+            return 0
+        fi
+    fi
+
+    # Sinon essayer le fichier .env
     if [ -f "$ENV_FILE" ]; then
-        set +u
-        source "$ENV_FILE"
-        set -u
+        # Extraire la clé sans utiliser source (évite l'interprétation des $)
+        CURSEFORGE_API_KEY=$(grep -oP "(?<=CURSEFORGE_API_KEY=['\"])[^'\"]+(?=['\"])" "$ENV_FILE" 2>/dev/null || \
+                           grep -oP "(?<=CURSEFORGE_API_KEY=)[^'\"]+" "$ENV_FILE" 2>/dev/null)
 
         if [ -n "${CURSEFORGE_API_KEY:-}" ]; then
             log_success "Clé API chargée depuis .env"
@@ -332,8 +345,18 @@ match_mod() {
 
 api_request() {
     local endpoint="$1"
+    local api_key_file="$SCRIPT_DIR/.api_key"
+    local header_file=$(mktemp)
 
-    local response=$(curl -s -H "Accept: application/json" -H "x-api-key: $CURSEFORGE_API_KEY" "$API_BASE_URL$endpoint")
+    # Créer le fichier header avec la clé API (évite l'interprétation shell des $)
+    printf 'header = "x-api-key: ' > "$header_file"
+    cat "$api_key_file" >> "$header_file"
+    printf '"\n' >> "$header_file"
+
+    local response
+    response=$(curl -s -H "Accept: application/json" -K "$header_file" "$API_BASE_URL$endpoint")
+
+    rm -f "$header_file"
 
     # Rate limiting (sleep 0.35s pour ~3 requêtes/seconde)
     sleep 0.35
@@ -346,15 +369,17 @@ search_mods_via_api() {
 
     log_api "🔍 Recherche des URLs CurseForge via l'API..."
 
-    # Récupérer la liste des mods à rechercher (sans URL CurseForge)
-    local mods_to_find=()
-    local mods_data=()
+    # Créer un fichier avec les slugs des mods à rechercher
+    local slugs_file=$(mktemp)
+    local mods_map_file=$(mktemp)
+    local total_to_find=0
 
     for json_file in "$mods_info_dir"/*.json; do
         [ -f "$json_file" ] || continue
 
-        local mod_name=$(jq -r '.name // "N/A"' "$json_file")
-        local website=$(jq -r '.website // ""' "$json_file")
+        local mod_data=$(jq -c '{name: .name, website: .website, authors: .authors}' "$json_file" 2>/dev/null)
+        local mod_name=$(echo "$mod_data" | jq -r '.name // "N/A"')
+        local website=$(echo "$mod_data" | jq -r '.website // ""')
 
         # Si pas d'URL CurseForge dans le manifest
         if [[ "$website" != *"curseforge.com/hytale/mods/"* ]] && [[ "$website" != *"legacy.curseforge.com/hytale/mods/"* ]]; then
@@ -364,7 +389,6 @@ search_mods_via_api() {
                 local cf_url=$(echo "$cached" | jq -r '.curseforge_url // empty')
                 if [ -n "$cf_url" ]; then
                     log_success "  ✓ $mod_name (cache) → $cf_url"
-                    # Sauvegarder l'URL dans le fichier JSON
                     local temp_json=$(mktemp)
                     jq --arg url "$cf_url" '. + {curseforge_url: $url, found_via: "cache"}' "$json_file" > "$temp_json"
                     mv "$temp_json" "$json_file"
@@ -372,147 +396,141 @@ search_mods_via_api() {
                 fi
             fi
 
-            mods_to_find+=("$mod_name")
-            mods_data+=("$json_file")
+            # Générer le slug du mod local
+            local slug=$(echo "$mod_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
+            echo "$slug" >> "$slugs_file"
+            echo "$mod_name|$json_file|$slug" >> "$mods_map_file"
+            ((total_to_find++))
         fi
     done
 
-    if [ ${#mods_to_find[@]} -eq 0 ]; then
+    if [ $total_to_find -eq 0 ]; then
         log_success "Tous les mods ont déjà une URL CurseForge !"
+        rm -f "$slugs_file" "$mods_map_file"
         return 0
     fi
 
-    log_api "Mods à rechercher : ${#mods_to_find[@]}"
+    log_api "Mods à rechercher : $total_to_find"
     echo ""
 
     # Recherche par meta-batches
     local current_offset=0
     local meta_batch_number=1
     local total_found=0
+    local remaining=$total_to_find
 
-    while [ ${#mods_to_find[@]} -gt 0 ] && [ $current_offset -lt $MAX_API_LIMIT ]; do
+    while [ $remaining -gt 0 ] && [ $current_offset -lt $MAX_API_LIMIT ]; do
         local meta_batch_end=$((current_offset + META_BATCH_SIZE))
 
         echo -e "${MAGENTA}🔍 Batch $meta_batch_number${NC} (mods CurseForge $current_offset-$meta_batch_end)"
-        log_info "   Mods restants à trouver : ${#mods_to_find[@]}"
+        log_info "   Mods restants à trouver : $remaining"
 
-        local batch_start_offset=$current_offset
         local found_in_this_meta_batch=0
-
-        # Télécharger le meta-batch par tranches de BATCH_SIZE
         local sub_batch=0
-        while [ $current_offset -lt $meta_batch_end ] && [ $current_offset -lt $MAX_API_LIMIT ]; do
+
+        while [ $current_offset -lt $meta_batch_end ] && [ $current_offset -lt $MAX_API_LIMIT ] && [ $remaining -gt 0 ]; do
             ((sub_batch++))
-            local page_index=$((current_offset / BATCH_SIZE))
 
             printf "\r   └─ Requête API %d/%d (mods %d-%d)..." "$sub_batch" "$((META_BATCH_SIZE / BATCH_SIZE))" "$current_offset" "$((current_offset + BATCH_SIZE))" >&2
 
-            # Requête API - sauvegarder dans un fichier temporaire
+            # Requête API - index est l'offset (position de départ), pas le numéro de page
             local api_response_file=$(mktemp)
-            api_request "/mods/search?gameId=$HYTALE_GAME_ID&pageSize=$BATCH_SIZE&index=$page_index" > "$api_response_file"
+            api_request "/mods/search?gameId=$HYTALE_GAME_ID&pageSize=$BATCH_SIZE&index=$current_offset" > "$api_response_file"
 
-            # Vérifier la réponse
-            local has_data=$(jq -r '.data // empty' "$api_response_file" 2>/dev/null)
-            if [ -z "$has_data" ]; then
-                echo "" >&2
-                log_warning "Pas de données reçues pour l'offset $current_offset"
-                rm -f "$api_response_file"
-                break
-            fi
+            # Vérifier la pagination pour savoir si on a atteint la fin
+            local total_count=$(jq -r '.pagination.totalCount // 0' "$api_response_file" 2>/dev/null)
+            local result_count=$(jq -r '.pagination.resultCount // 0' "$api_response_file" 2>/dev/null)
 
-            # Parser les mods retournés - sauvegarder dans un fichier temporaire
-            local cf_mods_file=$(mktemp)
-            jq -c '.data[]' "$api_response_file" 2>/dev/null > "$cf_mods_file"
+            # Extraire les données en une seule passe jq
+            local cf_data_file=$(mktemp)
+            jq -r '.data[]? | "\(.name)|\(.slug)|\(.id)|\(.links.websiteUrl)"' "$api_response_file" 2>/dev/null > "$cf_data_file"
             rm -f "$api_response_file"
 
-            # Chercher nos mods dans les résultats
-            local new_mods_to_find=()
-            local new_mods_data=()
+            if [ ! -s "$cf_data_file" ] || [ "$result_count" -eq 0 ]; then
+                echo "" >&2
+                log_info "Fin des mods CurseForge atteinte (total: $total_count)"
+                rm -f "$cf_data_file"
+                break 2
+            fi
 
-            for i in "${!mods_to_find[@]}"; do
-                local mod_name="${mods_to_find[$i]}"
-                local json_file="${mods_data[$i]}"
-                local mod_authors=$(jq -r '.authors // "Unknown"' "$json_file")
+            # Matcher rapidement avec grep et traitement par ligne
+            while IFS='|' read -r mod_name json_file local_slug; do
+                [ -z "$local_slug" ] && continue
 
-                local found=false
+                # Chercher une correspondance dans les résultats API (par slug ou nom)
+                local match=$(grep -i "^$mod_name|" "$cf_data_file" 2>/dev/null | head -1)
+                [ -z "$match" ] && match=$(grep -i "|$local_slug|" "$cf_data_file" 2>/dev/null | head -1)
 
-                # Lire ligne par ligne depuis le fichier
-                while IFS= read -r cf_mod; do
-                    [ -z "$cf_mod" ] && continue
+                if [ -n "$match" ]; then
+                    local cf_name=$(echo "$match" | cut -d'|' -f1)
+                    local cf_slug=$(echo "$match" | cut -d'|' -f2)
+                    local cf_id=$(echo "$match" | cut -d'|' -f3)
+                    local cf_url=$(echo "$match" | cut -d'|' -f4)
 
-                    if [ "$(match_mod "$mod_name" "$mod_authors" "$cf_mod")" = "true" ]; then
-                        local cf_url=$(echo "$cf_mod" | jq -r '.links.websiteUrl')
-                        local cf_slug=$(echo "$cf_mod" | jq -r '.slug')
-                        local cf_id=$(echo "$cf_mod" | jq -r '.id')
+                    echo "" >&2
+                    log_success "  ✓ $mod_name → $cf_url"
 
-                        echo "" >&2
-                        log_success "  ✓ $mod_name → $cf_url"
+                    # Sauvegarder dans le fichier JSON
+                    local temp_json=$(mktemp)
+                    jq --arg url "$cf_url" '. + {curseforge_url: $url, found_via: "api"}' "$json_file" > "$temp_json"
+                    mv "$temp_json" "$json_file"
 
-                        # Sauvegarder dans le fichier JSON
-                        local temp_json=$(mktemp)
-                        jq --arg url "$cf_url" '. + {curseforge_url: $url, found_via: "api"}' "$json_file" > "$temp_json"
-                        mv "$temp_json" "$json_file"
+                    # Sauvegarder dans le cache
+                    save_to_cache "$mod_name" "{\"curseforge_url\": \"$cf_url\", \"curseforge_id\": $cf_id, \"slug\": \"$cf_slug\", \"found_at_offset\": $current_offset}"
 
-                        # Sauvegarder dans le cache
-                        save_to_cache "$mod_name" "{\"curseforge_url\": \"$cf_url\", \"curseforge_id\": $cf_id, \"slug\": \"$cf_slug\", \"found_at_offset\": $current_offset, \"found_via\": \"api_batch\"}"
+                    # Marquer comme trouvé dans le fichier map
+                    sed -i "/^${mod_name}|/d" "$mods_map_file" 2>/dev/null
 
-                        found=true
-                        ((found_in_this_meta_batch++))
-                        ((total_found++))
-                        break
-                    fi
-                done < "$cf_mods_file"
-
-                if [ "$found" = false ]; then
-                    new_mods_to_find+=("$mod_name")
-                    new_mods_data+=("$json_file")
+                    ((found_in_this_meta_batch++))
+                    ((total_found++))
+                    ((remaining--))
                 fi
-            done
+            done < "$mods_map_file"
 
-            rm -f "$cf_mods_file"
+            rm -f "$cf_data_file"
 
-            # Mettre à jour la liste des mods à trouver
-            mods_to_find=("${new_mods_to_find[@]}")
-            mods_data=("${new_mods_data[@]}")
-
-            # Si tous trouvés, arrêter
-            if [ ${#mods_to_find[@]} -eq 0 ]; then
+            if [ $remaining -eq 0 ]; then
                 echo "" >&2
                 log_success "✅ Tous les mods trouvés !"
                 break 2
             fi
 
             current_offset=$((current_offset + BATCH_SIZE))
+
+            # Arrêter si on a parcouru tous les mods disponibles
+            if [ "$total_count" -gt 0 ] && [ $current_offset -ge $total_count ]; then
+                echo "" >&2
+                log_info "Tous les mods CurseForge parcourus ($total_count mods)"
+                break 2
+            fi
         done
 
         echo "" >&2
-        log_info "Bilan batch $meta_batch_number : $found_in_this_meta_batch mod(s) trouvé(s) - ${#mods_to_find[@]} restant(s)"
+        log_info "Bilan batch $meta_batch_number : $found_in_this_meta_batch mod(s) trouvé(s) - $remaining restant(s)"
 
-        # Mettre à jour l'offset maximum dans le cache
         update_highest_offset "$current_offset"
-
-        # Passer au meta-batch suivant
         ((meta_batch_number++))
         echo ""
 
-        # Petite pause entre les meta-batches
-        if [ ${#mods_to_find[@]} -gt 0 ]; then
-            log_api "⏸️  Pause de 2 secondes avant le batch suivant..."
-            sleep 2
+        if [ $remaining -gt 0 ]; then
+            log_api "⏸️  Pause de 1 seconde avant le batch suivant..."
+            sleep 1
         fi
     done
 
     echo ""
     log_success "Recherche terminée : $total_found mod(s) trouvé(s) via l'API"
 
-    if [ ${#mods_to_find[@]} -gt 0 ]; then
-        log_warning "Mods non trouvés (${#mods_to_find[@]}) : ${mods_to_find[*]}"
+    if [ $remaining -gt 0 ]; then
+        local not_found=$(cut -d'|' -f1 "$mods_map_file" | tr '\n' ' ')
+        log_warning "Mods non trouvés ($remaining) : $not_found"
 
-        # Sauvegarder les mods non trouvés dans le cache
-        for mod_name in "${mods_to_find[@]}"; do
+        while IFS='|' read -r mod_name json_file local_slug; do
             save_to_cache "$mod_name" "{\"not_found\": true, \"searched_up_to_offset\": $current_offset}"
-        done
+        done < "$mods_map_file"
     fi
+
+    rm -f "$slugs_file" "$mods_map_file"
 }
 
 #############################################
@@ -536,13 +554,13 @@ parse_manifest() {
     local manifest_file="$1"
     local output_file="$2"
 
-    # Utilisation de jq pour parser le JSON
+    # Utilisation de jq pour parser le JSON (parenthèses nécessaires pour jq 1.6)
     jq -c '{
-        name: .Name // "N/A",
-        version: .Version // "N/A",
-        description: .Description // "",
-        website: .Website // "",
-        authors: ([.Authors[]?.Name // "Unknown"] | join(", "))
+        name: ((.Name) // "N/A"),
+        version: ((.Version) // "N/A"),
+        description: ((.Description) // ""),
+        website: ((.Website) // ""),
+        authors: (([.Authors[]?.Name] | map(select(. != null)) | join(", ")) // "Unknown")
     }' "$manifest_file" 2>/dev/null > "$output_file" || echo '{}' > "$output_file"
 }
 
@@ -594,10 +612,12 @@ process_mods() {
 
     echo ""
 
-    # Recherche via API si clé disponible
-    if [ "$USE_API" = true ]; then
+    # Recherche via API si clé disponible (et pas en mode dry-run)
+    if [ "$USE_API" = true ] && [ "$DRY_RUN" = false ]; then
         search_mods_via_api "$TEMP_DATA_DIR"
         echo ""
+    elif [ "$USE_API" = true ] && [ "$DRY_RUN" = true ]; then
+        log_info "Mode dry-run : appels API ignorés"
     fi
 
     # Génération du fichier Markdown
