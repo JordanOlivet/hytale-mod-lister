@@ -6,8 +6,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  FRONTEND_IMAGE: ghcr.io/jordanolivet/hytale-modlister-frontend
-  BACKEND_IMAGE: ghcr.io/jordanolivet/hytale-modlister-backend
+  FRONTEND_IMAGE: ghcr.io/jordanolivet/hytale-mod-lister-frontend
+  BACKEND_IMAGE: ghcr.io/jordanolivet/hytale-mod-lister-backend
 
 jobs:
   check-release:
@@ -207,16 +207,16 @@ jobs:
 
             **Frontend:**
             \`\`\`bash
-            docker pull ghcr.io/jordanolivet/hytale-modlister-frontend:${version}
+            docker pull ghcr.io/jordanolivet/hytale-mod-lister-frontend:${version}
             # or
-            docker pull ghcr.io/jordanolivet/hytale-modlister-frontend:latest
+            docker pull ghcr.io/jordanolivet/hytale-mod-lister-frontend:latest
             \`\`\`
 
             **Backend:**
             \`\`\`bash
-            docker pull ghcr.io/jordanolivet/hytale-modlister-backend:${version}
+            docker pull ghcr.io/jordanolivet/hytale-mod-lister-backend:${version}
             # or
-            docker pull ghcr.io/jordanolivet/hytale-modlister-backend:latest
+            docker pull ghcr.io/jordanolivet/hytale-mod-lister-backend:latest
             \`\`\`
 
             ### Docker Compose
@@ -224,12 +224,12 @@ jobs:
             \`\`\`yaml
             services:
               frontend:
-                image: ghcr.io/jordanolivet/hytale-modlister-frontend:${version}
+                image: ghcr.io/jordanolivet/hytale-mod-lister-frontend:${version}
                 ports:
                   - "80:80"
 
               backend:
-                image: ghcr.io/jordanolivet/hytale-modlister-backend:${version}
+                image: ghcr.io/jordanolivet/hytale-mod-lister-backend:${version}
                 ports:
                   - "8080:8080"
             \`\`\`
