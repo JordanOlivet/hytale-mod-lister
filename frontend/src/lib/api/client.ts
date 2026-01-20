@@ -1,4 +1,4 @@
-import type { ModListResponse, StatusResponse } from '$lib/types';
+import type { ModListResponse, StatusResponse, LoginResponse, VerifyResponse } from '$lib/types';
 
 const API_BASE = '/api';
 
@@ -29,5 +29,30 @@ export async function getStatus(): Promise<StatusResponse> {
 export async function refreshMods(force: boolean = false): Promise<void> {
 	await fetchApi(`/mods/refresh${force ? '?force=true' : ''}`, {
 		method: 'POST'
+	});
+}
+
+export async function login(password: string): Promise<LoginResponse> {
+	return fetchApi<LoginResponse>('/auth/login', {
+		method: 'POST',
+		body: JSON.stringify({ password })
+	});
+}
+
+export async function verifyToken(token: string): Promise<VerifyResponse> {
+	return fetchApi<VerifyResponse>('/auth/verify', {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`
+		}
+	});
+}
+
+export async function logout(token: string): Promise<void> {
+	await fetchApi('/auth/logout', {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`
+		}
 	});
 }

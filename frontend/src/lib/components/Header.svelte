@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ThemeToggle from './ThemeToggle.svelte';
 	import RefreshButton from './RefreshButton.svelte';
+	import LoginButton from './LoginButton.svelte';
 	import { lastUpdated } from '$lib/stores/mods';
 
 	function formatDate(dateStr: string | null): string {
@@ -20,6 +21,7 @@
 	<div class="header-right">
 		<RefreshButton />
 		<ThemeToggle />
+		<LoginButton />
 	</div>
 </header>
 

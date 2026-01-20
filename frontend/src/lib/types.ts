@@ -29,3 +29,12 @@ export interface StatusResponse {
 	progress?: RefreshProgress;
 	nextScheduledRefresh?: string;
 }
+
+export interface LoginResponse {
+	token: string;
+	expiresAt: string;
+}
+
+export interface VerifyResponse {
+	valid: boolean;
+}

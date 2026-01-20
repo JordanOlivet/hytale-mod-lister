@@ -8,7 +8,7 @@ Write-Host ""
 
 # Demarrer le backend dans une nouvelle fenetre
 Write-Host "[Backend] Demarrage sur http://localhost:5000..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$scriptDir\backend\HytaleModLister.Api'; dotnet run"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$scriptDir\backend\HytaleModLister.Api'; `$env:ADMIN_PASSWORD='test'; dotnet run"
 
 # Attendre un peu que le backend demarre
 Start-Sleep -Seconds 2
@@ -23,5 +23,7 @@ Write-Host ""
 Write-Host "URLs:" -ForegroundColor Cyan
 Write-Host "  Frontend: http://localhost:5173" -ForegroundColor White
 Write-Host "  Backend:  http://localhost:5000/api/mods" -ForegroundColor White
+Write-Host ""
+Write-Host "Admin login: password = 'test'" -ForegroundColor Magenta
 Write-Host ""
 Write-Host "Fermez les fenetres PowerShell pour arreter les serveurs." -ForegroundColor Gray
