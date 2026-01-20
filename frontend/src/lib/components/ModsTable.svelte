@@ -47,6 +47,14 @@
 		if ($sortColumn !== column) return '';
 		return $sortDirection === 'asc' ? ' ↑' : ' ↓';
 	}
+
+	function hasUpdate(mod: Mod): boolean {
+		if (!mod.latestCurseForgeVersion || !mod.version) return false;
+		// Normalize versions for comparison (remove leading 'v' if present)
+		const local = mod.version.replace(/^v/i, '').trim();
+		const remote = mod.latestCurseForgeVersion.replace(/^v/i, '').trim();
+		return local !== remote;
+	}
 </script>
 
 <div class="table-container">
@@ -118,7 +126,12 @@
 								<span class="no-url">-</span>
 							{/if}
 						</td>
-						<td class="secondary">{mod.version}</td>
+						<td class="secondary">
+							{mod.version}
+							{#if hasUpdate(mod)}
+								<span class="badge badge-update" title="New version: {mod.latestCurseForgeVersion}">UPDATE</span>
+							{/if}
+						</td>
 						<td class="secondary">{mod.authors.join(', ') || 'Unknown'}</td>
 						<td class="secondary description">{truncate(mod.description, 100)}</td>
 						<td>
@@ -280,6 +293,14 @@
 	/* Unknown: red - not found */
 	.badge-unknown {
 		background: #dc2626;
+	}
+
+	/* Update available: green */
+	.badge-update {
+		background: #16a34a;
+		cursor: help;
+		margin-left: 8px;
+		vertical-align: middle;
 	}
 
 	.loading, .error, .empty {

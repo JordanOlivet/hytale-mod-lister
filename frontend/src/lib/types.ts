@@ -6,6 +6,7 @@ export interface Mod {
 	authors: string[];
 	website?: string;
 	curseForgeUrl?: string;
+	latestCurseForgeVersion?: string;
 	foundVia?: string;
 }
 

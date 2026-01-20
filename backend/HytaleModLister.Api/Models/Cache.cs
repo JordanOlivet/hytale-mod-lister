@@ -9,6 +9,7 @@ public class ModCache
 public class CachedMod
 {
     public string? CurseForgeUrl { get; set; }
+    public string? LatestVersion { get; set; }
     public bool NotFound { get; set; }
     public DateTime CachedAt { get; set; }
 }

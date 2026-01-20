@@ -17,17 +17,17 @@ public partial class ModMatcherService : IModMatcherService
 
             // Exact normalized match
             if (normalizedCf == normalizedLocal)
-                return new MatchResult(cf.Url, "exact");
+                return new MatchResult(cf.Url, "exact", cf.LatestVersion);
 
             // Slug match
             if (cf.Slug == localSlug)
-                return new MatchResult(cf.Url, "slug");
+                return new MatchResult(cf.Url, "slug", cf.LatestVersion);
 
             // Substring match (min 5 chars)
             if (normalizedCf.Length >= 5 && normalizedLocal.Length >= 5)
             {
                 if (normalizedCf.Contains(normalizedLocal) || normalizedLocal.Contains(normalizedCf))
-                    return new MatchResult(cf.Url, "substring");
+                    return new MatchResult(cf.Url, "substring", cf.LatestVersion);
             }
         }
 
@@ -44,7 +44,7 @@ public partial class ModMatcherService : IModMatcherService
             if (similarity > bestSimilarity)
             {
                 bestSimilarity = similarity;
-                bestFuzzy = new MatchResult(cf.Url, $"fuzzy:{similarity}%");
+                bestFuzzy = new MatchResult(cf.Url, $"fuzzy:{similarity}%", cf.LatestVersion);
             }
         }
 

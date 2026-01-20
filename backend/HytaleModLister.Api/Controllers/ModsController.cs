@@ -38,6 +38,7 @@ public class ModsController : ControllerBase
                 Authors = m.Authors,
                 Website = string.IsNullOrEmpty(m.Website) ? null : m.Website,
                 CurseForgeUrl = m.CurseForgeUrl,
+                LatestCurseForgeVersion = m.LatestCurseForgeVersion,
                 FoundVia = m.FoundVia
             }).ToList()
         };

@@ -70,7 +70,53 @@ public class CurseForgeService : ICurseForgeService
                 Name = m.Name ?? "",
                 Slug = m.Slug ?? "",
                 Url = m.Links!.WebsiteUrl!,
-                Authors = m.Authors?.Select(a => a.Name ?? "").ToList() ?? []
+                Authors = m.Authors?.Select(a => a.Name ?? "").ToList() ?? [],
+                LatestVersion = ExtractLatestVersion(m.LatestFiles)
             }).ToList();
+    }
+
+    private string? ExtractLatestVersion(List<CfFile>? files)
+    {
+        if (files == null || files.Count == 0) return null;
+
+        // Get the most recent file by date, fallback to first file
+        var latestFile = files
+            .OrderByDescending(f => f.FileDate ?? DateTime.MinValue)
+            .FirstOrDefault();
+
+        if (latestFile == null) return null;
+
+        // Try to extract version from DisplayName (e.g., "ModName v1.2.3" or "ModName 1.2.3")
+        var displayName = latestFile.DisplayName;
+        if (!string.IsNullOrEmpty(displayName))
+        {
+            // Common patterns: "v1.2.3", "1.2.3", "version 1.2.3"
+            var versionMatch = System.Text.RegularExpressions.Regex.Match(
+                displayName,
+                @"v?(\d+(?:\.\d+)+(?:[-+][\w.]+)?)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (versionMatch.Success)
+            {
+                return versionMatch.Groups[1].Value;
+            }
+        }
+
+        // Fallback: try to extract from FileName
+        var fileName = latestFile.FileName;
+        if (!string.IsNullOrEmpty(fileName))
+        {
+            var versionMatch = System.Text.RegularExpressions.Regex.Match(
+                fileName,
+                @"v?(\d+(?:\.\d+)+(?:[-+][\w.]+)?)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (versionMatch.Success)
+            {
+                return versionMatch.Groups[1].Value;
+            }
+        }
+
+        return null;
     }
 }

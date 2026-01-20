@@ -70,6 +70,7 @@ public class ModRefreshService : IModRefreshService
                     if (cached != null && _cache.IsCacheValid(cached) && !string.IsNullOrEmpty(cached.CurseForgeUrl))
                     {
                         mod.CurseForgeUrl = cached.CurseForgeUrl;
+                        mod.LatestCurseForgeVersion = cached.LatestVersion;
                         mod.FoundVia = "cache";
                         toFind.Remove(mod);
                     }
@@ -120,11 +121,12 @@ public class ModRefreshService : IModRefreshService
                 if (match != null)
                 {
                     mod.CurseForgeUrl = match.Url;
+                    mod.LatestCurseForgeVersion = match.LatestVersion;
                     mod.FoundVia = match.MatchType;
-                    _cache.CacheMod(mod.Name, match.Url);
+                    _cache.CacheMod(mod.Name, match.Url, match.LatestVersion);
                     toFind.Remove(mod);
                     _progress = _progress with { Processed = _progress.Processed + 1 };
-                    _logger.LogInformation("Found {Mod} via author search: {Url}", mod.Name, match.Url);
+                    _logger.LogInformation("Found {Mod} via author search: {Url} (v{Version})", mod.Name, match.Url, match.LatestVersion ?? "unknown");
                 }
             }
 
@@ -153,11 +155,12 @@ public class ModRefreshService : IModRefreshService
                 if (match != null)
                 {
                     mod.CurseForgeUrl = match.Url;
+                    mod.LatestCurseForgeVersion = match.LatestVersion;
                     mod.FoundVia = match.MatchType;
-                    _cache.CacheMod(mod.Name, match.Url);
+                    _cache.CacheMod(mod.Name, match.Url, match.LatestVersion);
                     toFind.Remove(mod);
                     _progress = _progress with { Processed = _progress.Processed + 1 };
-                    _logger.LogInformation("Found {Mod} via batch search: {Url}", mod.Name, match.Url);
+                    _logger.LogInformation("Found {Mod} via batch search: {Url} (v{Version})", mod.Name, match.Url, match.LatestVersion ?? "unknown");
                 }
             }
 

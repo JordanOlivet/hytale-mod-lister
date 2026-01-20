@@ -83,7 +83,7 @@ public class CacheService : ICacheService
         return cache.Mods.GetValueOrDefault(modName);
     }
 
-    public void CacheMod(string modName, string? url, bool notFound = false)
+    public void CacheMod(string modName, string? url, string? latestVersion = null, bool notFound = false)
     {
         lock (_lock)
         {
@@ -91,6 +91,7 @@ public class CacheService : ICacheService
             cache.Mods[modName] = new CachedMod
             {
                 CurseForgeUrl = url,
+                LatestVersion = latestVersion,
                 NotFound = notFound,
                 CachedAt = DateTime.UtcNow
             };

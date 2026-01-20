@@ -9,6 +9,7 @@ public class ModInfo
     public string Website { get; set; } = "";
     public List<string> Authors { get; set; } = [];
     public string? CurseForgeUrl { get; set; }
+    public string? LatestCurseForgeVersion { get; set; }
     public string? FoundVia { get; set; }
 }
 
@@ -21,6 +22,7 @@ public record ModDto
     public required List<string> Authors { get; init; }
     public string? Website { get; init; }
     public string? CurseForgeUrl { get; init; }
+    public string? LatestCurseForgeVersion { get; init; }
     public string? FoundVia { get; init; }
 }
 
