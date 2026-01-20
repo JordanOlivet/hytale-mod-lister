@@ -183,18 +183,15 @@ jobs:
           cd frontend
           npm version ${{ steps.version.outputs.version }} --no-git-tag-version
 
-      - name: Commit version changes
+      - name: Commit version changes and create tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git
           git add VERSION frontend/package.json
           git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
-          git push
-
-      - name: Create Git tag
-        run: |
           git tag ${{ steps.version.outputs.tag }}
-          git push origin ${{ steps.version.outputs.tag }}
+          git push origin main --tags
 
       - name: Create GitHub Release
         uses: actions/github-script@v7
