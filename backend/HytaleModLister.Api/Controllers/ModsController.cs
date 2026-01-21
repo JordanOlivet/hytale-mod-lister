@@ -88,10 +88,12 @@ public class ModsController : ControllerBase
     /// </summary>
     /// <param name="fileName">The current filename of the mod to update</param>
     /// <param name="authorization">Bearer token for admin authentication</param>
+    /// <param name="skipRefresh">If true, skips the mods list refresh after update (for bulk updates)</param>
     [HttpPost("{fileName}/update")]
     public async Task<ActionResult<UpdateModResponse>> UpdateMod(
         string fileName,
-        [FromHeader(Name = "Authorization")] string? authorization)
+        [FromHeader(Name = "Authorization")] string? authorization,
+        [FromQuery] bool skipRefresh = false)
     {
         // 1. Validate the admin session
         var token = ExtractBearerToken(authorization);
@@ -103,7 +105,7 @@ public class ModsController : ControllerBase
 
         // 2. Call the update service
         _logger.LogInformation("Admin requested update for mod: {FileName}", fileName);
-        var result = await _updateService.UpdateModAsync(fileName);
+        var result = await _updateService.UpdateModAsync(fileName, skipRefresh);
 
         return result.Success ? Ok(result) : BadRequest(result);
     }

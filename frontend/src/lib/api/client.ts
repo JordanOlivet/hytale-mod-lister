@@ -57,8 +57,9 @@ export async function logout(token: string): Promise<void> {
 	});
 }
 
-export async function updateMod(fileName: string, token: string): Promise<UpdateModResponse> {
-	return fetchApi<UpdateModResponse>(`/mods/${encodeURIComponent(fileName)}/update`, {
+export async function updateMod(fileName: string, token: string, skipRefresh: boolean = false): Promise<UpdateModResponse> {
+	const query = skipRefresh ? '?skipRefresh=true' : '';
+	return fetchApi<UpdateModResponse>(`/mods/${encodeURIComponent(fileName)}/update${query}`, {
 		method: 'POST',
 		headers: {
 			Authorization: `Bearer ${token}`

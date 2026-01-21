@@ -1,11 +1,13 @@
 <script lang="ts">
-	import { filteredMods, searchQuery, sortColumn, sortDirection, isLoading, error } from '$lib/stores/mods';
+	import { filteredMods, searchQuery, sortColumn, sortDirection, isLoading, error, modsWithUpdates } from '$lib/stores/mods';
 	import { isAdmin } from '$lib/stores/auth';
 	import type { Mod } from '$lib/types';
 	import UpdateModModal from './UpdateModModal.svelte';
+	import BulkUpdateModal from './BulkUpdateModal.svelte';
 
 	let showUpdateModal = $state(false);
 	let selectedModForUpdate = $state<Mod | null>(null);
+	let showBulkUpdateModal = $state(false);
 
 	function openUpdateModal(mod: Mod) {
 		selectedModForUpdate = mod;
@@ -83,6 +85,11 @@
 			placeholder="Search mods..."
 			bind:value={$searchQuery}
 		/>
+		{#if $isAdmin && $modsWithUpdates.length > 0}
+			<button class="bulk-update-btn" onclick={() => showBulkUpdateModal = true}>
+				Tout mettre à jour ({$modsWithUpdates.length})
+			</button>
+		{/if}
 	</div>
 
 	{#if $isLoading}
@@ -173,6 +180,10 @@
 	<UpdateModModal mod={selectedModForUpdate} onClose={closeUpdateModal} />
 {/if}
 
+{#if showBulkUpdateModal}
+	<BulkUpdateModal modsToUpdate={$modsWithUpdates} onClose={() => showBulkUpdateModal = false} />
+{/if}
+
 <style>
 	.table-container {
 		padding: 24px;
@@ -204,6 +215,23 @@
 
 	.search-bar input::placeholder {
 		color: var(--text-secondary);
+	}
+
+	.bulk-update-btn {
+		padding: 8px 16px;
+		background: #16a34a;
+		color: white;
+		border: none;
+		border-radius: 6px;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		margin-left: auto;
+		white-space: nowrap;
+	}
+
+	.bulk-update-btn:hover {
+		background: #15803d;
 	}
 
 	table {

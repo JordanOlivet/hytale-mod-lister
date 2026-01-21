@@ -28,7 +28,7 @@ public class ModUpdateService : IModUpdateService
 
     private string ModsPath => _configuration.GetValue("ModsPath", "/app/mods");
 
-    public async Task<UpdateModResponse> UpdateModAsync(string fileName)
+    public async Task<UpdateModResponse> UpdateModAsync(string fileName, bool skipRefresh = false)
     {
         _logger.LogInformation("Starting update for mod: {FileName}", fileName);
 
@@ -158,16 +158,19 @@ public class ModUpdateService : IModUpdateService
             _cacheService.InvalidateMod(mod.Name);
             _logger.LogInformation("Cache invalidated for mod: {ModName}", mod.Name);
 
-            // 12. Refresh the mods list synchronously to ensure fresh data
-            try
+            // 12. Refresh the mods list synchronously to ensure fresh data (unless skipped for bulk updates)
+            if (!skipRefresh)
             {
-                await _refreshService.RefreshModsAsync(forceRefresh: false);
-                _logger.LogInformation("Mods list refreshed after update");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error refreshing mods list after update");
-                // Don't fail the update if refresh fails
+                try
+                {
+                    await _refreshService.RefreshModsAsync(forceRefresh: false);
+                    _logger.LogInformation("Mods list refreshed after update");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error refreshing mods list after update");
+                    // Don't fail the update if refresh fails
+                }
             }
 
             _logger.LogInformation("Successfully updated mod {OldFileName} to {NewFileName}", fileName, newFileName);

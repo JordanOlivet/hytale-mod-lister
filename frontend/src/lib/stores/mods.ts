@@ -16,6 +16,15 @@ export const sortDirection = writable<'asc' | 'desc'>('asc');
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let isPolling = false;
 
+export const modsWithUpdates = derived(mods, ($mods) => {
+	return $mods.filter((mod) => {
+		if (!mod.latestCurseForgeVersion || !mod.version) return false;
+		const local = mod.version.replace(/^v/i, '').trim();
+		const remote = mod.latestCurseForgeVersion.replace(/^v/i, '').trim();
+		return local !== remote;
+	});
+});
+
 export const filteredMods = derived(
 	[mods, searchQuery, sortColumn, sortDirection],
 	([$mods, $searchQuery, $sortColumn, $sortDirection]) => {
