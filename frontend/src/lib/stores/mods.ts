@@ -1,6 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import type { Mod, StatusResponse } from '$lib/types';
 import { getMods, getStatus, refreshMods as apiRefresh } from '$lib/api/client';
+import { hasNewerVersion } from '$lib/utils/versionCompare';
 
 export const mods = writable<Mod[]>([]);
 export const lastUpdated = writable<string | null>(null);
@@ -17,12 +18,7 @@ let pollInterval: ReturnType<typeof setInterval> | null = null;
 let isPolling = false;
 
 export const modsWithUpdates = derived(mods, ($mods) => {
-	return $mods.filter((mod) => {
-		if (!mod.latestCurseForgeVersion || !mod.version) return false;
-		const local = mod.version.replace(/^v/i, '').trim();
-		const remote = mod.latestCurseForgeVersion.replace(/^v/i, '').trim();
-		return local !== remote;
-	});
+	return $mods.filter((mod) => hasNewerVersion(mod.version, mod.latestCurseForgeVersion));
 });
 
 export const filteredMods = derived(

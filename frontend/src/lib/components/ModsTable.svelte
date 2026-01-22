@@ -4,6 +4,7 @@
 	import type { Mod } from '$lib/types';
 	import UpdateModModal from './UpdateModModal.svelte';
 	import BulkUpdateModal from './BulkUpdateModal.svelte';
+	import { hasNewerVersion } from '$lib/utils/versionCompare';
 
 	let showUpdateModal = $state(false);
 	let selectedModForUpdate = $state<Mod | null>(null);
@@ -66,11 +67,7 @@
 	}
 
 	function hasUpdate(mod: Mod): boolean {
-		if (!mod.latestCurseForgeVersion || !mod.version) return false;
-		// Normalize versions for comparison (remove leading 'v' if present)
-		const local = mod.version.replace(/^v/i, '').trim();
-		const remote = mod.latestCurseForgeVersion.replace(/^v/i, '').trim();
-		return local !== remote;
+		return hasNewerVersion(mod.version, mod.latestCurseForgeVersion);
 	}
 </script>
 
@@ -148,8 +145,8 @@
 								<span class="no-url">-</span>
 							{/if}
 						</td>
-						<td class="secondary">
-							{mod.version}
+						<td class="version-cell" title={mod.version}>
+							<span class="version-text">{mod.version}</span>
 							{#if hasUpdate(mod)}
 								{#if $isAdmin}
 									<button class="badge badge-update badge-clickable"
@@ -297,6 +294,28 @@
 	.secondary {
 		color: var(--text-secondary);
 		font-size: 13px;
+	}
+
+	.version-cell {
+		color: var(--text-secondary);
+		font-size: 13px;
+		min-width: 120px;
+		max-width: 180px;
+	}
+
+	.version-text {
+		display: inline-block;
+		max-width: 100px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		vertical-align: middle;
+	}
+
+	/* Show full version on hover */
+	.version-cell:hover .version-text {
+		max-width: none;
+		overflow: visible;
 	}
 
 	.description {

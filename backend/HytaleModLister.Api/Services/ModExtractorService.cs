@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text.Json;
+using HytaleModLister.Api.Helpers;
 using HytaleModLister.Api.Models;
 
 namespace HytaleModLister.Api.Services;
@@ -48,7 +49,7 @@ public class ModExtractorService : IModExtractorService
                 {
                     Name = manifest.Name ?? Path.GetFileNameWithoutExtension(file),
                     FileName = Path.GetFileName(file),
-                    Version = manifest.Version ?? "N/A",
+                    Version = DetermineVersion(manifest.Version, Path.GetFileName(file)),
                     Description = manifest.Description ?? "",
                     Website = manifest.Website ?? "",
                     Authors = manifest.Authors?.Select(a => a.Name).Where(n => n != null).Cast<string>().ToList() ?? []
@@ -73,5 +74,18 @@ public class ModExtractorService : IModExtractorService
         }
 
         return mods.OrderBy(m => m.Name).ToList();
+    }
+
+    private static string DetermineVersion(string? manifestVersion, string fileName)
+    {
+        // Priority: filename > manifest (filename is the source of truth used by CurseForge)
+        var fileNameVersion = VersionExtractor.ExtractFromFileName(fileName);
+        if (!string.IsNullOrEmpty(fileNameVersion))
+            return fileNameVersion;
+
+        if (!string.IsNullOrEmpty(manifestVersion) && manifestVersion != "N/A")
+            return manifestVersion;
+
+        return "N/A";
     }
 }
