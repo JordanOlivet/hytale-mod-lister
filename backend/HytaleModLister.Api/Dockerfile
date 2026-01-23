@@ -1,7 +1,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS build
+ARG VERSION=0.0.0
 WORKDIR /src
 COPY . .
-RUN dotnet publish HytaleModLister.Api.csproj -c Release -o /app
+RUN dotnet publish HytaleModLister.Api.csproj -c Release -o /app -p:Version=${VERSION}
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app

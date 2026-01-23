@@ -1,8 +1,10 @@
 FROM node:22-alpine AS build
+ARG VERSION=0.0.0-dev
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+RUN npm pkg set version=${VERSION}
 RUN npm run build
 
 FROM nginx:alpine

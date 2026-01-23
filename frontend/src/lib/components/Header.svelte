@@ -13,7 +13,7 @@
 
 <header class="header">
 	<div class="header-left">
-		<h1>Hytale Mod Lister</h1>
+		<h1>Hytale Mod Lister <span class="version">v{__APP_VERSION__}</span></h1>
 		<span class="last-updated">
 			Last updated: {formatDate($lastUpdated)}
 		</span>
@@ -47,6 +47,13 @@
 		font-size: 24px;
 		font-weight: 600;
 		color: var(--text-primary);
+	}
+
+	.version {
+		font-size: 12px;
+		font-weight: 400;
+		color: var(--text-secondary);
+		margin-left: 8px;
 	}
 
 	.last-updated {

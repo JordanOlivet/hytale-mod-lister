@@ -1,3 +1,4 @@
+using System.Reflection;
 using HytaleModLister.Api.Services;
 using Serilog;
 using Serilog.Events;
@@ -14,7 +15,8 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
-    Log.Information("Starting HytaleModLister API");
+    string version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "unknown";
+    Log.Information("Starting HytaleModLister API v{Version}", version);
 
     WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
