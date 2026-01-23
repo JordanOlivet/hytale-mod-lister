@@ -33,6 +33,7 @@
 		padding: 16px 24px;
 		background: var(--bg-secondary);
 		border-bottom: 1px solid var(--border-color);
+		flex-shrink: 0;
 	}
 
 	.header-left {

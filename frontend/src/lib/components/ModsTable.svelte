@@ -122,21 +122,22 @@
 			{/if}
 		</div>
 	{:else}
-		<table>
-			<thead>
+		<div class="table-wrapper">
+			<table>
+				<thead>
 				<tr>
-					<th class="sortable" onclick={() => toggleSort('name')}>
+					<th class="sortable col-name" onclick={() => toggleSort('name')}>
 						Name{getSortIcon('name')}
 					</th>
-					<th>URL</th>
-					<th class="sortable" onclick={() => toggleSort('version')}>
+					<th class="col-url">URL</th>
+					<th class="sortable col-version" onclick={() => toggleSort('version')}>
 						Version{getSortIcon('version')}
 					</th>
-					<th class="sortable" onclick={() => toggleSort('authors')}>
+					<th class="sortable col-authors" onclick={() => toggleSort('authors')}>
 						Authors{getSortIcon('authors')}
 					</th>
-					<th>Description</th>
-					<th>Source</th>
+					<th class="col-description">Description</th>
+					<th class="col-source">Source</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -144,10 +145,10 @@
 					{@const urlInfo = getUrlDisplay(mod)}
 					{@const badge = getBadgeLabel(mod)}
 					<tr>
-						<td class="name-cell">{mod.name}</td>
-						<td class="url-cell">
+						<td class="name-cell col-name">{mod.name}</td>
+						<td class="url-cell col-url">
 							{#if urlInfo.type !== 'none'}
-								<a href={urlInfo.url} target="_blank" rel="noopener noreferrer" class="url-link" class:website={urlInfo.type === 'website'}>
+								<a href={urlInfo.url} target="_blank" rel="noopener noreferrer" class="url-link" class:website={urlInfo.type === 'website'} title={urlInfo.url}>
 									{truncate(urlInfo.label, 50)}
 									<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 										<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
@@ -159,7 +160,7 @@
 								<span class="no-url">-</span>
 							{/if}
 						</td>
-						<td class="version-cell" title={mod.version}>
+						<td class="version-cell col-version" title={mod.version}>
 							<span class="version-text">{mod.version}</span>
 							{#if hasUpdate(mod)}
 								{#if $isAdmin}
@@ -173,9 +174,9 @@
 								{/if}
 							{/if}
 						</td>
-						<td class="secondary">{mod.authors.join(', ') || 'Unknown'}</td>
-						<td class="secondary description">{truncate(mod.description, 100)}</td>
-						<td>
+						<td class="secondary col-authors">{mod.authors.join(', ') || 'Unknown'}</td>
+						<td class="secondary description col-description">{truncate(mod.description, 100)}</td>
+						<td class="col-source">
 							<span class="source-cell">
 								{#if badge.label}
 									<span class="badge badge-{badge.type}">{badge.label}</span>
@@ -197,8 +198,9 @@
 						</td>
 					</tr>
 				{/each}
-			</tbody>
-		</table>
+				</tbody>
+			</table>
+		</div>
 	{/if}
 </div>
 
@@ -217,6 +219,11 @@
 <style>
 	.table-container {
 		padding: 24px;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		min-height: 0;
 	}
 
 	.search-bar {
@@ -228,6 +235,15 @@
 		border: 1px solid var(--border-color);
 		border-radius: 8px;
 		margin-bottom: 24px;
+		flex-shrink: 0;
+	}
+
+	.table-wrapper {
+		flex: 1;
+		overflow: hidden;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.search-bar svg {
@@ -266,8 +282,38 @@
 
 	table {
 		width: 100%;
-		border-collapse: collapse;
+		border-collapse: separate;
+		border-spacing: 0;
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
 	}
+
+	thead {
+		flex-shrink: 0;
+	}
+
+
+	tbody {
+		flex: 1;
+		overflow-y: auto;
+		min-height: 0;
+	}
+
+	thead tr,
+	tbody tr {
+		display: table;
+		width: 100%;
+		table-layout: fixed;
+	}
+
+	.col-name { width: 14%; word-wrap: break-word; overflow-wrap: break-word; }
+	.col-url { width: 25%; word-wrap: break-word; overflow-wrap: break-word; }
+	.col-version { width: 12%; }
+	.col-authors { width: 12%; }
+	.col-description { width: 22%; }
+	.col-source { width: 15%; }
 
 	th, td {
 		padding: 12px 16px;
@@ -300,12 +346,13 @@
 
 	.url-cell {
 		max-width: 300px;
+		word-wrap: break-word;
+		overflow-wrap: break-word;
 	}
 
 	.url-link {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
+		display: inline;
+		word-break: break-all;
 		color: var(--accent-color);
 		text-decoration: none;
 		font-weight: 500;
