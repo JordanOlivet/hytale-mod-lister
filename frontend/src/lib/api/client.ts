@@ -1,14 +1,15 @@
-import type { ModListResponse, StatusResponse, LoginResponse, VerifyResponse, UpdateModResponse } from '$lib/types';
+import type { ModListResponse, StatusResponse, LoginResponse, VerifyResponse, UpdateModResponse, UrlOverrideResponse } from '$lib/types';
 
 const API_BASE = '/api';
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
+	const { headers, ...restOptions } = options ?? {};
 	const response = await fetch(`${API_BASE}${endpoint}`, {
+		...restOptions,
 		headers: {
 			'Content-Type': 'application/json',
-			...options?.headers
-		},
-		...options
+			...headers
+		}
 	});
 
 	if (!response.ok) {
@@ -61,6 +62,33 @@ export async function updateMod(fileName: string, token: string, skipRefresh: bo
 	const query = skipRefresh ? '?skipRefresh=true' : '';
 	return fetchApi<UpdateModResponse>(`/mods/${encodeURIComponent(fileName)}/update${query}`, {
 		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${token}`
+		}
+	});
+}
+
+export async function getUrlOverride(modName: string): Promise<UrlOverrideResponse | null> {
+	try {
+		return await fetchApi<UrlOverrideResponse>(`/mods/${encodeURIComponent(modName)}/override`);
+	} catch {
+		return null;
+	}
+}
+
+export async function setUrlOverride(modName: string, curseForgeUrl: string, token: string): Promise<UrlOverrideResponse> {
+	return fetchApi<UrlOverrideResponse>(`/mods/${encodeURIComponent(modName)}/override`, {
+		method: 'PUT',
+		headers: {
+			Authorization: `Bearer ${token}`
+		},
+		body: JSON.stringify({ curseForgeUrl })
+	});
+}
+
+export async function deleteUrlOverride(modName: string, token: string): Promise<void> {
+	await fetchApi(`/mods/${encodeURIComponent(modName)}/override`, {
+		method: 'DELETE',
 		headers: {
 			Authorization: `Bearer ${token}`
 		}

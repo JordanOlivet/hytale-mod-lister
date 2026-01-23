@@ -8,6 +8,7 @@ public class ModRefreshService : IModRefreshService
     private readonly ICurseForgeService _curseForge;
     private readonly IModMatcherService _matcher;
     private readonly ICacheService _cache;
+    private readonly IUrlOverrideService _urlOverride;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ModRefreshService> _logger;
 
@@ -25,6 +26,7 @@ public class ModRefreshService : IModRefreshService
         ICurseForgeService curseForge,
         IModMatcherService matcher,
         ICacheService cache,
+        IUrlOverrideService urlOverride,
         IConfiguration configuration,
         ILogger<ModRefreshService> logger)
     {
@@ -32,6 +34,7 @@ public class ModRefreshService : IModRefreshService
         _curseForge = curseForge;
         _matcher = matcher;
         _cache = cache;
+        _urlOverride = urlOverride;
         _configuration = configuration;
         _logger = logger;
     }
@@ -58,7 +61,19 @@ public class ModRefreshService : IModRefreshService
             var mods = _extractor.ExtractMods(ModsPath);
             _logger.LogInformation("Extracted {Count} mods from files", mods.Count);
 
-            // Find mods that need URL lookup
+            // Apply URL overrides first (highest priority)
+            foreach (var mod in mods)
+            {
+                var urlOverride = _urlOverride.GetOverride(mod.Name);
+                if (urlOverride != null)
+                {
+                    mod.CurseForgeUrl = urlOverride.CurseForgeUrl;
+                    mod.FoundVia = "override";
+                    _logger.LogInformation("Applied URL override for mod: {ModName}", mod.Name);
+                }
+            }
+
+            // Find mods that need URL lookup (excluding those with overrides)
             var toFind = mods.Where(m => string.IsNullOrEmpty(m.CurseForgeUrl)).ToList();
 
             // Check cache first (unless force refresh)

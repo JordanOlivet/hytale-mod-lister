@@ -40,6 +40,7 @@ try
 
     // Register services
     builder.Services.AddSingleton<ICacheService, CacheService>();
+    builder.Services.AddSingleton<IUrlOverrideService, UrlOverrideService>();
     builder.Services.AddSingleton<IModExtractorService, ModExtractorService>();
     builder.Services.AddSingleton<IModMatcherService, ModMatcherService>();
     builder.Services.AddHttpClient<ICurseForgeService, CurseForgeService>();

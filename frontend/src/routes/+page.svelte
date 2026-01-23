@@ -18,12 +18,16 @@
 
 <style>
 	.app {
-		min-height: 100vh;
+		height: 100vh;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 
 	main {
 		flex: 1;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
 	}
 </style>

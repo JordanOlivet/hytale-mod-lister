@@ -45,3 +45,10 @@ export interface UpdateModResponse {
 	newFileName?: string;
 	oldFileName?: string;
 }
+
+export interface UrlOverrideResponse {
+	modName: string;
+	curseForgeUrl: string;
+	createdAt: string;
+	updatedAt?: string;
+}

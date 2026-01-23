@@ -27,3 +27,4 @@ frontend/.svelte-kit
 frontend/build
 backend/.vs/HytaleModLister.Api/FileContentIndex
 backend/.vs
+.mods_url_overrides.json

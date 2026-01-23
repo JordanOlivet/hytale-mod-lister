@@ -11,17 +11,20 @@ public class ModsController : ControllerBase
     private readonly IModRefreshService _refreshService;
     private readonly IModUpdateService _updateService;
     private readonly ISessionService _sessionService;
+    private readonly IUrlOverrideService _urlOverrideService;
     private readonly ILogger<ModsController> _logger;
 
     public ModsController(
         IModRefreshService refreshService,
         IModUpdateService updateService,
         ISessionService sessionService,
+        IUrlOverrideService urlOverrideService,
         ILogger<ModsController> logger)
     {
         _refreshService = refreshService;
         _updateService = updateService;
         _sessionService = sessionService;
+        _urlOverrideService = urlOverrideService;
         _logger = logger;
     }
 
@@ -37,17 +40,25 @@ public class ModsController : ControllerBase
         {
             LastUpdated = _refreshService.LastUpdated,
             TotalCount = mods.Count,
-            Mods = mods.Select(m => new ModDto
+            Mods = mods.Select(m =>
             {
-                Name = m.Name,
-                FileName = m.FileName,
-                Version = m.Version,
-                Description = string.IsNullOrEmpty(m.Description) ? null : m.Description,
-                Authors = m.Authors,
-                Website = string.IsNullOrEmpty(m.Website) ? null : m.Website,
-                CurseForgeUrl = m.CurseForgeUrl,
-                LatestCurseForgeVersion = m.LatestCurseForgeVersion,
-                FoundVia = m.FoundVia
+                // Apply URL overrides on-the-fly for immediate display
+                var urlOverride = _urlOverrideService.GetOverride(m.Name);
+                var curseForgeUrl = urlOverride?.CurseForgeUrl ?? m.CurseForgeUrl;
+                var foundVia = urlOverride != null ? "override" : m.FoundVia;
+
+                return new ModDto
+                {
+                    Name = m.Name,
+                    FileName = m.FileName,
+                    Version = m.Version,
+                    Description = string.IsNullOrEmpty(m.Description) ? null : m.Description,
+                    Authors = m.Authors,
+                    Website = string.IsNullOrEmpty(m.Website) ? null : m.Website,
+                    CurseForgeUrl = curseForgeUrl,
+                    LatestCurseForgeVersion = m.LatestCurseForgeVersion,
+                    FoundVia = foundVia
+                };
             }).ToList()
         };
 
@@ -108,6 +119,92 @@ public class ModsController : ControllerBase
         var result = await _updateService.UpdateModAsync(fileName, skipRefresh);
 
         return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
+    /// Get the URL override for a specific mod
+    /// </summary>
+    /// <param name="modName">The name of the mod</param>
+    [HttpGet("{modName}/override")]
+    public ActionResult<UrlOverrideResponse> GetUrlOverride(string modName)
+    {
+        var urlOverride = _urlOverrideService.GetOverride(modName);
+        if (urlOverride == null)
+        {
+            return NotFound(new { message = "No override found for this mod" });
+        }
+
+        return Ok(new UrlOverrideResponse
+        {
+            ModName = modName,
+            CurseForgeUrl = urlOverride.CurseForgeUrl,
+            CreatedAt = urlOverride.CreatedAt,
+            UpdatedAt = urlOverride.UpdatedAt
+        });
+    }
+
+    /// <summary>
+    /// Set or update the URL override for a specific mod
+    /// </summary>
+    /// <param name="modName">The name of the mod</param>
+    /// <param name="request">The override URL request</param>
+    /// <param name="authorization">Bearer token for admin authentication</param>
+    [HttpPut("{modName}/override")]
+    public ActionResult<UrlOverrideResponse> SetUrlOverride(
+        string modName,
+        [FromBody] SetUrlOverrideRequest request,
+        [FromHeader(Name = "Authorization")] string? authorization)
+    {
+        // Validate admin session
+        var token = ExtractBearerToken(authorization);
+        if (string.IsNullOrEmpty(token) || !_sessionService.ValidateSession(token))
+        {
+            _logger.LogWarning("Unauthorized URL override attempt for mod: {ModName}", modName);
+            return Unauthorized(new { message = "Unauthorized" });
+        }
+
+        // Validate URL format
+        if (string.IsNullOrWhiteSpace(request.CurseForgeUrl) ||
+            !request.CurseForgeUrl.Contains("curseforge.com/hytale/mods/"))
+        {
+            return BadRequest(new { message = "Invalid CurseForge URL. Must contain 'curseforge.com/hytale/mods/'" });
+        }
+
+        _urlOverrideService.SetOverride(modName, request.CurseForgeUrl);
+        _logger.LogInformation("Admin set URL override for mod: {ModName} -> {Url}", modName, request.CurseForgeUrl);
+
+        var urlOverride = _urlOverrideService.GetOverride(modName)!;
+        return Ok(new UrlOverrideResponse
+        {
+            ModName = modName,
+            CurseForgeUrl = urlOverride.CurseForgeUrl,
+            CreatedAt = urlOverride.CreatedAt,
+            UpdatedAt = urlOverride.UpdatedAt
+        });
+    }
+
+    /// <summary>
+    /// Delete the URL override for a specific mod
+    /// </summary>
+    /// <param name="modName">The name of the mod</param>
+    /// <param name="authorization">Bearer token for admin authentication</param>
+    [HttpDelete("{modName}/override")]
+    public IActionResult DeleteUrlOverride(
+        string modName,
+        [FromHeader(Name = "Authorization")] string? authorization)
+    {
+        // Validate admin session
+        var token = ExtractBearerToken(authorization);
+        if (string.IsNullOrEmpty(token) || !_sessionService.ValidateSession(token))
+        {
+            _logger.LogWarning("Unauthorized URL override delete attempt for mod: {ModName}", modName);
+            return Unauthorized(new { message = "Unauthorized" });
+        }
+
+        _urlOverrideService.DeleteOverride(modName);
+        _logger.LogInformation("Admin deleted URL override for mod: {ModName}", modName);
+
+        return Ok(new { message = "Override deleted successfully" });
     }
 
     private static string? ExtractBearerToken(string? authorization)
